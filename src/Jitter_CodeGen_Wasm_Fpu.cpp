@@ -181,15 +181,21 @@ void CCodeGen_Wasm::Emit_Fp_ToSingleI32_MemMem(const STATEMENT& statement)
 	auto dst = statement.dst->GetSymbol().get();
 	auto src1 = statement.src1->GetSymbol().get();
 
-	assert(src1->m_type == SYM_FP_RELATIVE32);
-
 	PrepareSymbolDef(dst);
 
-	//Can't use PrepareSymbolUse here because src1 is a f32 and we need an i32
-	PushRelativeAddress(src1);
-	m_functionStream.Write8(Wasm::INST_I32_LOAD);
-	m_functionStream.Write8(0x02);
-	m_functionStream.Write8(0x00);
+	//src1 holds the bits of an int32
+	if(src1->m_type == SYM_FP_RELATIVE32)
+	{
+		PushRelativeAddress(src1);
+		m_functionStream.Write8(Wasm::INST_I32_LOAD);
+		m_functionStream.Write8(0x02);
+		m_functionStream.Write8(0x00);
+	}
+	else
+	{
+		PrepareSymbolUse(src1);
+		m_functionStream.Write8(Wasm::INST_I32_REINTERPRET_F32);
+	}
 
 	m_functionStream.Write8(Wasm::INST_F32_CONVERT_I32_S);
 
@@ -201,18 +207,24 @@ void CCodeGen_Wasm::Emit_Fp_ToInt32TruncS_MemMem(const STATEMENT& statement)
 	auto dst = statement.dst->GetSymbol().get();
 	auto src1 = statement.src1->GetSymbol().get();
 
-	assert(dst->m_type == SYM_FP_RELATIVE32);
-
 	PrepareSymbolDef(dst);
 	PrepareSymbolUse(src1);
 
 	m_functionStream.Write8(Wasm::INST_PREFIX_FC);
 	m_functionStream.Write8(Wasm::INST_I32_TRUNC_SAT_F32_S);
 
-	//Can't use CommitSymbol here since we got a i32 on the stack and our dst symbol is a f32.
-	m_functionStream.Write8(Wasm::INST_I32_STORE);
-	m_functionStream.Write8(0x02);
-	m_functionStream.Write8(0x00);
+	//dst holds the bits of an int32
+	if(dst->m_type == SYM_FP_RELATIVE32)
+	{
+		m_functionStream.Write8(Wasm::INST_I32_STORE);
+		m_functionStream.Write8(0x02);
+		m_functionStream.Write8(0x00);
+	}
+	else
+	{
+		m_functionStream.Write8(Wasm::INST_F32_REINTERPRET_I32);
+		CommitSymbol(dst);
+	}
 }
 
 void CCodeGen_Wasm::Emit_Fp_LdCst_TmpCst(const STATEMENT& statement)
@@ -220,7 +232,6 @@ void CCodeGen_Wasm::Emit_Fp_LdCst_TmpCst(const STATEMENT& statement)
 	auto dst = statement.dst->GetSymbol().get();
 	auto src1 = statement.src1->GetSymbol().get();
 
-	assert(dst->m_type == SYM_FP_TEMPORARY32);
 	assert(src1->m_type == SYM_CONSTANT);
 
 	PrepareSymbolDef(dst);
@@ -228,6 +239,17 @@ void CCodeGen_Wasm::Emit_Fp_LdCst_TmpCst(const STATEMENT& statement)
 	m_functionStream.Write8(Wasm::INST_F32_CONST);
 	m_functionStream.Write32(src1->m_valueLow);
 
+	CommitSymbol(dst);
+}
+
+void CCodeGen_Wasm::Emit_Fp_Mov_VarVar(const STATEMENT& statement)
+{
+	//Used by the register allocator to load and spill FP registers.
+	auto dst = statement.dst->GetSymbol().get();
+	auto src1 = statement.src1->GetSymbol().get();
+
+	PrepareSymbolDef(dst);
+	PrepareSymbolUse(src1);
 	CommitSymbol(dst);
 }
 
@@ -239,31 +261,33 @@ void CCodeGen_Wasm::Emit_Fp_SetRoundingMode_Cst(const STATEMENT& statement)
 // clang-format off
 CCodeGen_Wasm::CONSTMATCHER CCodeGen_Wasm::g_fpuConstMatchers[] =
 {
-	{ OP_FP_ADD_S,           MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_FP_MEMORY32,  MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_ADD>       },
-	{ OP_FP_SUB_S,           MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_FP_MEMORY32,  MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_SUB>       },
-	{ OP_FP_MUL_S,           MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_FP_MEMORY32,  MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_MUL>       },
-	{ OP_FP_DIV_S,           MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_FP_MEMORY32,  MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_DIV>       },
+	{ OP_FP_ADD_S,           MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_FP_VARIABLE32,MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_ADD>       },
+	{ OP_FP_SUB_S,           MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_FP_VARIABLE32,MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_SUB>       },
+	{ OP_FP_MUL_S,           MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_FP_VARIABLE32,MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_MUL>       },
+	{ OP_FP_DIV_S,           MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_FP_VARIABLE32,MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_DIV>       },
 
-	{ OP_FP_CMP_S,           MATCH_ANY,              MATCH_FP_MEMORY32,   MATCH_FP_MEMORY32,  MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Cmp_AnyMemMem                        },
+	{ OP_FP_CMP_S,           MATCH_ANY,              MATCH_FP_VARIABLE32, MATCH_FP_VARIABLE32,MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Cmp_AnyMemMem                        },
 
-	{ OP_FP_MIN_S,           MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_FP_MEMORY32,  MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_MIN>       },
-	{ OP_FP_MAX_S,           MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_FP_MEMORY32,  MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_MAX>       },
+	{ OP_FP_MIN_S,           MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_FP_VARIABLE32,MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_MIN>       },
+	{ OP_FP_MAX_S,           MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_FP_VARIABLE32,MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMemMem<Wasm::INST_F32_MAX>       },
 
-	{ OP_FP_RCPL_S,          MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Rcpl_MemMem                          },
-	{ OP_FP_SQRT_S,          MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMem<Wasm::INST_F32_SQRT>         },
-	{ OP_FP_RSQRT_S,         MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Rsqrt_MemMem                         },
+	{ OP_FP_RCPL_S,          MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Rcpl_MemMem                          },
+	{ OP_FP_SQRT_S,          MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMem<Wasm::INST_F32_SQRT>         },
+	{ OP_FP_RSQRT_S,         MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Rsqrt_MemMem                         },
 
-	{ OP_FP_CLAMP_S,         MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Clamp_MemMem                         },
+	{ OP_FP_CLAMP_S,         MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Clamp_MemMem                         },
 
-	{ OP_FP_ABS_S,           MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMem<Wasm::INST_F32_ABS>          },
-	{ OP_FP_NEG_S,           MATCH_FP_MEMORY32,      MATCH_FP_MEMORY32,   MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMem<Wasm::INST_F32_NEG>          },
+	{ OP_FP_ABS_S,           MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMem<Wasm::INST_F32_ABS>          },
+	{ OP_FP_NEG_S,           MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fpu_MemMem<Wasm::INST_F32_NEG>          },
 
-	{ OP_FP_TOSINGLE_I32,    MATCH_FP_MEMORY32,      MATCH_FP_RELATIVE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_ToSingleI32_MemMem                   },
-	{ OP_FP_TOINT32_TRUNC_S, MATCH_FP_RELATIVE32,    MATCH_FP_MEMORY32,   MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_ToInt32TruncS_MemMem                 },
+	{ OP_FP_TOSINGLE_I32,    MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_ToSingleI32_MemMem                   },
+	{ OP_FP_TOINT32_TRUNC_S, MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_ToInt32TruncS_MemMem                 },
 
-	{ OP_FP_LDCST,           MATCH_FP_TEMPORARY32,   MATCH_CONSTANT,      MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_LdCst_TmpCst                         },
+	{ OP_FP_LDCST,           MATCH_FP_VARIABLE32,    MATCH_CONSTANT,      MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_LdCst_TmpCst                         },
 
 	{ OP_FP_SETROUNDINGMODE, MATCH_NIL,              MATCH_CONSTANT,      MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_SetRoundingMode_Cst                  },
+
+	{ OP_MOV,                MATCH_FP_VARIABLE32,    MATCH_FP_VARIABLE32, MATCH_NIL,          MATCH_NIL,      &CCodeGen_Wasm::Emit_Fp_Mov_VarVar                           },
 
 	{ OP_MOV,                MATCH_NIL,              MATCH_NIL,           MATCH_NIL,          MATCH_NIL,      nullptr                                                      },
 };

@@ -35,6 +35,15 @@ namespace Jitter
 
 		unsigned int GetAvailableRegisterCount() const override;
 		unsigned int GetAvailableMdRegisterCount() const override;
+
+		//MD/FP registers handed to the register allocator. Each register id maps to one v128 local
+		//(SYM_REGISTER128) and one f32 local (SYM_FP_REGISTER32); the allocator gives an id to one
+		//symbol at a time, so the two never hold live values together. V8 keeps hot locals in
+		//machine registers, so this removes most loads/stores of VU and FPU registers.
+		enum
+		{
+			MD_REGISTER_COUNT = 16,
+		};
 		bool Has128BitsCallOperands() const override;
 		bool CanHold128BitsReturnValueInRegisters() const override;
 		bool SupportsExternalJumps() const override;
@@ -77,6 +86,10 @@ namespace Jitter
 		void PrepareLocalVars(const StatementList&);
 
 		uint32 GetTemporaryLocation(CSymbol*) const;
+
+		uint32 GetRegister128Location(CSymbol*) const;
+
+		uint32 GetFpRegister32Location(CSymbol*) const;
 
 		void PushContext();
 
@@ -196,6 +209,7 @@ namespace Jitter
 		void Emit_Fp_Rsqrt_MemMem(const STATEMENT&);
 		void Emit_Fp_Clamp_MemMem(const STATEMENT&);
 		void Emit_Fp_ToSingleI32_MemMem(const STATEMENT&);
+		void Emit_Fp_Mov_VarVar(const STATEMENT&);
 		void Emit_Fp_ToInt32TruncS_MemMem(const STATEMENT&);
 		void Emit_Fp_LdCst_TmpCst(const STATEMENT&);
 		void Emit_Fp_SetRoundingMode_Cst(const STATEMENT&);

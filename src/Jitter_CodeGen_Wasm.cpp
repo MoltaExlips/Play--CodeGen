@@ -266,8 +266,9 @@ void CCodeGen_Wasm::GenerateCode(const StatementList& statements, unsigned int s
 	m_temporaryLocations.clear();
 	m_localI32Count = 0;
 	m_localI64Count = 0;
-	m_localF32Count = 0;
-	m_localV128Count = 0;
+	//The first f32 and v128 locals are the MD/FP registers; temporaries come after them.
+	m_localF32Count = MD_REGISTER_COUNT;
+	m_localV128Count = MD_REGISTER_COUNT;
 	m_isInsideBlock = false;
 	m_isInsideLoop = false;
 	m_currentBlockDepth = 0;
@@ -342,7 +343,7 @@ unsigned int CCodeGen_Wasm::GetAvailableRegisterCount() const
 
 unsigned int CCodeGen_Wasm::GetAvailableMdRegisterCount() const
 {
-	return 0;
+	return MD_REGISTER_COUNT;
 }
 
 bool CCodeGen_Wasm::Has128BitsCallOperands() const
@@ -663,6 +664,20 @@ uint32 CCodeGen_Wasm::GetTemporaryLocation(CSymbol* symbol) const
 	return localIdx;
 }
 
+uint32 CCodeGen_Wasm::GetRegister128Location(CSymbol* symbol) const
+{
+	assert(symbol->m_type == SYM_REGISTER128);
+	assert(symbol->m_valueLow < MD_REGISTER_COUNT);
+	return symbol->m_valueLow + m_localI32Count + m_localI64Count + m_localF32Count + 1;
+}
+
+uint32 CCodeGen_Wasm::GetFpRegister32Location(CSymbol* symbol) const
+{
+	assert(symbol->m_type == SYM_FP_REGISTER32);
+	assert(symbol->m_valueLow < MD_REGISTER_COUNT);
+	return symbol->m_valueLow + m_localI32Count + m_localI64Count + 1;
+}
+
 void CCodeGen_Wasm::PushContext()
 {
 	//Context is the first param
@@ -796,6 +811,14 @@ void CCodeGen_Wasm::PrepareSymbolUse(CSymbol* symbol)
 	case SYM_TEMPORARY128:
 		PushTemporary128(symbol);
 		break;
+	case SYM_REGISTER128:
+		m_functionStream.Write8(Wasm::INST_LOCAL_GET);
+		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetRegister128Location(symbol));
+		break;
+	case SYM_FP_REGISTER32:
+		m_functionStream.Write8(Wasm::INST_LOCAL_GET);
+		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetFpRegister32Location(symbol));
+		break;
 	default:
 		assert(false);
 		break;
@@ -817,6 +840,8 @@ void CCodeGen_Wasm::PrepareSymbolDef(CSymbol* symbol)
 	case SYM_TEMPORARY128:
 	case SYM_TMP_REFERENCE:
 	case SYM_FP_TEMPORARY32:
+	case SYM_REGISTER128:
+	case SYM_FP_REGISTER32:
 		break;
 	default:
 		assert(false);
@@ -863,6 +888,14 @@ void CCodeGen_Wasm::CommitSymbol(CSymbol* symbol)
 		break;
 	case SYM_TEMPORARY128:
 		PullTemporary128(symbol);
+		break;
+	case SYM_REGISTER128:
+		m_functionStream.Write8(Wasm::INST_LOCAL_SET);
+		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetRegister128Location(symbol));
+		break;
+	case SYM_FP_REGISTER32:
+		m_functionStream.Write8(Wasm::INST_LOCAL_SET);
+		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetFpRegister32Location(symbol));
 		break;
 	default:
 		assert(false);
