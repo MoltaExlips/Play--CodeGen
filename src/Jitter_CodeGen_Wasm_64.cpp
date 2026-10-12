@@ -178,16 +178,16 @@ CCodeGen_Wasm::CONSTMATCHER CCodeGen_Wasm::g_64ConstMatchers[] =
 
 	{ OP_SRA64,          MATCH_MEMORY64,       MATCH_MEMORY64,       MATCH_ANY,           MATCH_NIL, &CCodeGen_Wasm::Emit_Shift64_MemAnyAny<Wasm::INST_I64_SHR_S>   },
 
-	{ OP_CMP64,          MATCH_MEMORY,         MATCH_MEMORY64,       MATCH_MEMORY64,      MATCH_NIL, &CCodeGen_Wasm::Emit_Cmp64_MemAnyAny                     },
-	{ OP_CMP64,          MATCH_MEMORY,         MATCH_MEMORY64,       MATCH_CONSTANT64,    MATCH_NIL, &CCodeGen_Wasm::Emit_Cmp64_MemAnyAny                     },
+	{ OP_CMP64,          MATCH_VARIABLE,       MATCH_MEMORY64,       MATCH_MEMORY64,      MATCH_NIL, &CCodeGen_Wasm::Emit_Cmp64_MemAnyAny                     },
+	{ OP_CMP64,          MATCH_VARIABLE,       MATCH_MEMORY64,       MATCH_CONSTANT64,    MATCH_NIL, &CCodeGen_Wasm::Emit_Cmp64_MemAnyAny                     },
 
-	{ OP_LOADFROMREF,    MATCH_MEMORY64,       MATCH_MEM_REF,        MATCH_NIL,           MATCH_NIL, &CCodeGen_Wasm::Emit_Generic_LoadFromRef_MemVar<Wasm::INST_I64_LOAD, 3>    },
-	{ OP_LOADFROMREF,    MATCH_MEMORY64,       MATCH_MEM_REF,        MATCH_ANY32,         MATCH_NIL, &CCodeGen_Wasm::Emit_Generic_LoadFromRef_MemVarAny<Wasm::INST_I64_LOAD, 3> },
+	{ OP_LOADFROMREF,    MATCH_MEMORY64,       MATCH_VAR_REF,        MATCH_NIL,           MATCH_NIL, &CCodeGen_Wasm::Emit_Generic_LoadFromRef_MemVar<Wasm::INST_I64_LOAD, 3>    },
+	{ OP_LOADFROMREF,    MATCH_MEMORY64,       MATCH_VAR_REF,        MATCH_ANY32,         MATCH_NIL, &CCodeGen_Wasm::Emit_Generic_LoadFromRef_MemVarAny<Wasm::INST_I64_LOAD, 3> },
 
-	{ OP_STOREATREF,     MATCH_NIL,            MATCH_MEM_REF,        MATCH_MEMORY64,      MATCH_NIL,        &CCodeGen_Wasm::Emit_Generic_StoreAtRef_VarAny<Wasm::INST_I64_STORE, 3>    },
-	{ OP_STOREATREF,     MATCH_NIL,            MATCH_MEM_REF,        MATCH_CONSTANT64,    MATCH_NIL,        &CCodeGen_Wasm::Emit_Generic_StoreAtRef_VarAny<Wasm::INST_I64_STORE, 3>    },
-	{ OP_STOREATREF,     MATCH_NIL,            MATCH_MEM_REF,        MATCH_ANY32,         MATCH_MEMORY64,   &CCodeGen_Wasm::Emit_Generic_StoreAtRef_VarAnyAny<Wasm::INST_I64_STORE, 3> },
-	{ OP_STOREATREF,     MATCH_NIL,            MATCH_MEM_REF,        MATCH_ANY32,         MATCH_CONSTANT64, &CCodeGen_Wasm::Emit_Generic_StoreAtRef_VarAnyAny<Wasm::INST_I64_STORE, 3> },
+	{ OP_STOREATREF,     MATCH_NIL,            MATCH_VAR_REF,        MATCH_MEMORY64,      MATCH_NIL,        &CCodeGen_Wasm::Emit_Generic_StoreAtRef_VarAny<Wasm::INST_I64_STORE, 3>    },
+	{ OP_STOREATREF,     MATCH_NIL,            MATCH_VAR_REF,        MATCH_CONSTANT64,    MATCH_NIL,        &CCodeGen_Wasm::Emit_Generic_StoreAtRef_VarAny<Wasm::INST_I64_STORE, 3>    },
+	{ OP_STOREATREF,     MATCH_NIL,            MATCH_VAR_REF,        MATCH_ANY32,         MATCH_MEMORY64,   &CCodeGen_Wasm::Emit_Generic_StoreAtRef_VarAnyAny<Wasm::INST_I64_STORE, 3> },
+	{ OP_STOREATREF,     MATCH_NIL,            MATCH_VAR_REF,        MATCH_ANY32,         MATCH_CONSTANT64, &CCodeGen_Wasm::Emit_Generic_StoreAtRef_VarAnyAny<Wasm::INST_I64_STORE, 3> },
 
 	{ OP_RETVAL,         MATCH_TEMPORARY64,    MATCH_NIL,            MATCH_NIL,           MATCH_NIL, &CCodeGen_Wasm::Emit_RetVal_Tmp64                        },
 

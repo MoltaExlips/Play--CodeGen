@@ -468,11 +468,10 @@ void CCodeGen_Wasm::Emit_Md_ClampS_MemMem(const STATEMENT& statement)
 
 	//Load first constant
 	{
-		m_functionStream.Write8(Wasm::INST_I32_CONST);
-		CWasmModuleBuilder::WriteSLeb128(m_functionStream, static_cast<int32>(0x7F7FFFFF));
-
+		static const uint32 constant[4] = {0x7F7FFFFF, 0x7F7FFFFF, 0x7F7FFFFF, 0x7F7FFFFF};
 		m_functionStream.Write8(Wasm::INST_PREFIX_SIMD);
-		CWasmModuleBuilder::WriteULeb128(m_functionStream, Wasm::INST_I32x4_SPLAT);
+		m_functionStream.Write8(Wasm::INST_V128_CONST);
+		m_functionStream.Write(constant, 0x10);
 	}
 
 	m_functionStream.Write8(Wasm::INST_PREFIX_SIMD);
@@ -480,11 +479,10 @@ void CCodeGen_Wasm::Emit_Md_ClampS_MemMem(const STATEMENT& statement)
 
 	//Load second constant
 	{
-		m_functionStream.Write8(Wasm::INST_I32_CONST);
-		CWasmModuleBuilder::WriteSLeb128(m_functionStream, static_cast<int32>(0xFF7FFFFF));
-
+		static const uint32 constant[4] = {0xFF7FFFFF, 0xFF7FFFFF, 0xFF7FFFFF, 0xFF7FFFFF};
 		m_functionStream.Write8(Wasm::INST_PREFIX_SIMD);
-		CWasmModuleBuilder::WriteULeb128(m_functionStream, Wasm::INST_I32x4_SPLAT);
+		m_functionStream.Write8(Wasm::INST_V128_CONST);
+		m_functionStream.Write(constant, 0x10);
 	}
 
 	m_functionStream.Write8(Wasm::INST_PREFIX_SIMD);
@@ -997,24 +995,24 @@ CCodeGen_Wasm::CONSTMATCHER CCodeGen_Wasm::g_mdConstMatchers[] =
 	{ OP_MD_SRAH,        MATCH_VARIABLE128,    MATCH_VARIABLE128,    MATCH_CONSTANT,      MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_Shift_MemMemCst<Wasm::INST_I16x8_SHR_S> },
 	{ OP_MD_SRAW,        MATCH_VARIABLE128,    MATCH_VARIABLE128,    MATCH_CONSTANT,      MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_Shift_MemMemCst<Wasm::INST_I32x4_SHR_S> },
 
-	{ OP_MD_MAKECLIP,    MATCH_MEMORY,         MATCH_VARIABLE128,    MATCH_VARIABLE128,   MATCH_VARIABLE128,&CCodeGen_Wasm::Emit_Md_MakeClip_MemMemMemMem                   },
-	{ OP_MD_MAKESZ,      MATCH_MEMORY,         MATCH_VARIABLE128,    MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_MakeSz_MemMem                           },
+	{ OP_MD_MAKECLIP,    MATCH_VARIABLE,       MATCH_VARIABLE128,    MATCH_VARIABLE128,   MATCH_VARIABLE128,&CCodeGen_Wasm::Emit_Md_MakeClip_MemMemMemMem                   },
+	{ OP_MD_MAKESZ,      MATCH_VARIABLE,       MATCH_VARIABLE128,    MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_MakeSz_MemMem                           },
 
 	{ OP_MD_TOSINGLE_I32,       MATCH_VARIABLE128,  MATCH_VARIABLE128,  MATCH_NIL,        MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_MemMem<Wasm::INST_F32x4_CONVERT_I32x4_S>   },
 	{ OP_MD_TOINT32_TRUNC_S,    MATCH_VARIABLE128,  MATCH_VARIABLE128,  MATCH_NIL,        MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_MemMem<Wasm::INST_I32x4_TRUNC_SAT_F32x4_S> },
 
-	{ OP_LOADFROMREF,    MATCH_VARIABLE128,    MATCH_MEM_REF,        MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_LoadFromRef_MemMem                    },
-	{ OP_LOADFROMREF,    MATCH_VARIABLE128,    MATCH_MEM_REF,        MATCH_ANY32,         MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_LoadFromRef_MemMemAny                 },
+	{ OP_LOADFROMREF,    MATCH_VARIABLE128,    MATCH_VAR_REF,        MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_LoadFromRef_MemMem                    },
+	{ OP_LOADFROMREF,    MATCH_VARIABLE128,    MATCH_VAR_REF,        MATCH_ANY32,         MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_LoadFromRef_MemMemAny                 },
 
-	{ OP_STOREATREF,     MATCH_NIL,            MATCH_MEM_REF,        MATCH_VARIABLE128,   MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_StoreAtRef_MemMem                     },
-	{ OP_STOREATREF,     MATCH_NIL,            MATCH_MEM_REF,        MATCH_ANY32,         MATCH_VARIABLE128,&CCodeGen_Wasm::Emit_Md_StoreAtRef_MemAnyMem                  },
+	{ OP_STOREATREF,     MATCH_NIL,            MATCH_VAR_REF,        MATCH_VARIABLE128,   MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_StoreAtRef_MemMem                     },
+	{ OP_STOREATREF,     MATCH_NIL,            MATCH_VAR_REF,        MATCH_ANY32,         MATCH_VARIABLE128,&CCodeGen_Wasm::Emit_Md_StoreAtRef_MemAnyMem                  },
 
 	{ OP_MD_LOADFROMREF_MASKED, MATCH_VARIABLE128,    MATCH_VAR_REF,    MATCH_ANY32,      MATCH_VARIABLE128, &CCodeGen_Wasm::Emit_Md_LoadFromRefMasked_MemMemAnyMem     },
 	{ OP_MD_STOREATREF_MASKED,  MATCH_NIL,            MATCH_VAR_REF,    MATCH_ANY32,      MATCH_VARIABLE128, &CCodeGen_Wasm::Emit_Md_StoreAtRefMasked_MemAnyMem         },
 
 	{ OP_MD_MOV_MASKED,  MATCH_VARIABLE128,    MATCH_VARIABLE128,    MATCH_VARIABLE128,   MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_MovMasked_MemMemMem                   },
 
-	{ OP_MD_EXPAND_W,    MATCH_VARIABLE128,    MATCH_MEMORY,         MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_ExpandW_MemAny                        },
+	{ OP_MD_EXPAND_W,    MATCH_VARIABLE128,    MATCH_VARIABLE,       MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_ExpandW_MemAny                        },
 	{ OP_MD_EXPAND_W,    MATCH_VARIABLE128,    MATCH_CONSTANT,       MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_ExpandW_MemAny                        },
 	{ OP_MD_EXPAND_W,    MATCH_VARIABLE128,    MATCH_VARIABLE128,    MATCH_CONSTANT,      MATCH_NIL,      &CCodeGen_Wasm::Emit_Md_ExpandW_MemMemCst                     },
 

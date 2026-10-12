@@ -93,6 +93,7 @@ CCodeGen_Wasm::CONSTMATCHER CCodeGen_Wasm::g_constMatchers[] =
 	{ OP_BREAK,          MATCH_NIL,            MATCH_NIL,            MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Break                                  },
 
 	{ OP_MOV,            MATCH_VARIABLE,       MATCH_ANY,            MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Mov_VarAny                             },
+	{ OP_MOV,            MATCH_VAR_REF,        MATCH_VAR_REF,        MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_Mov_RefRef                             },
 
 	{ OP_RELTOREF,       MATCH_VAR_REF,        MATCH_CONSTANT,       MATCH_ANY,           MATCH_NIL,      &CCodeGen_Wasm::Emit_RelToRef_VarCst                        },
 
@@ -125,6 +126,7 @@ CCodeGen_Wasm::CONSTMATCHER CCodeGen_Wasm::g_constMatchers[] =
 
 	{ OP_CALL,           MATCH_NIL,            MATCH_CONSTANTPTR,    MATCH_CONSTANT,      MATCH_NIL,      &CCodeGen_Wasm::Emit_Call                                   },
 	{ OP_RETVAL,         MATCH_TEMPORARY,      MATCH_NIL,            MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_RetVal_Tmp                             },
+	{ OP_RETVAL,         MATCH_REGISTER,       MATCH_NIL,            MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_RetVal_Reg                             },
 
 	{ OP_EXTERNJMP,      MATCH_NIL,            MATCH_CONSTANTPTR,    MATCH_NIL,           MATCH_NIL,      &CCodeGen_Wasm::Emit_ExternJmp                              },
 
@@ -266,7 +268,8 @@ void CCodeGen_Wasm::GenerateCode(const StatementList& statements, unsigned int s
 	m_temporaryLocations.clear();
 	m_localI32Count = 0;
 	m_localI64Count = 0;
-	//The first f32 and v128 locals are the MD/FP registers; temporaries come after them.
+	//The first i32, f32 and v128 locals are registers; temporaries come after them.
+	m_localI32Count = REGISTER_COUNT;
 	m_localF32Count = MD_REGISTER_COUNT;
 	m_localV128Count = MD_REGISTER_COUNT;
 	m_isInsideBlock = false;
@@ -338,7 +341,7 @@ void CCodeGen_Wasm::RegisterExternalSymbols(CObjectFile*) const
 
 unsigned int CCodeGen_Wasm::GetAvailableRegisterCount() const
 {
-	return 0;
+	return REGISTER_COUNT;
 }
 
 unsigned int CCodeGen_Wasm::GetAvailableMdRegisterCount() const
@@ -671,6 +674,14 @@ uint32 CCodeGen_Wasm::GetRegister128Location(CSymbol* symbol) const
 	return symbol->m_valueLow + m_localI32Count + m_localI64Count + m_localF32Count + 1;
 }
 
+uint32 CCodeGen_Wasm::GetRegisterLocation(CSymbol* symbol) const
+{
+	assert((symbol->m_type == SYM_REGISTER) || (symbol->m_type == SYM_REG_REFERENCE));
+	assert(symbol->m_valueLow < REGISTER_COUNT);
+	//First local is the function's parameter
+	return symbol->m_valueLow + 1;
+}
+
 uint32 CCodeGen_Wasm::GetFpRegister32Location(CSymbol* symbol) const
 {
 	assert(symbol->m_type == SYM_FP_REGISTER32);
@@ -815,6 +826,11 @@ void CCodeGen_Wasm::PrepareSymbolUse(CSymbol* symbol)
 		m_functionStream.Write8(Wasm::INST_LOCAL_GET);
 		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetRegister128Location(symbol));
 		break;
+	case SYM_REGISTER:
+	case SYM_REG_REFERENCE:
+		m_functionStream.Write8(Wasm::INST_LOCAL_GET);
+		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetRegisterLocation(symbol));
+		break;
 	case SYM_FP_REGISTER32:
 		m_functionStream.Write8(Wasm::INST_LOCAL_GET);
 		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetFpRegister32Location(symbol));
@@ -842,6 +858,11 @@ void CCodeGen_Wasm::PrepareSymbolDef(CSymbol* symbol)
 	case SYM_FP_TEMPORARY32:
 	case SYM_REGISTER128:
 	case SYM_FP_REGISTER32:
+	case SYM_REGISTER:
+	case SYM_REG_REFERENCE:
+		break;
+	case SYM_REL_REFERENCE:
+		PushRelativeRefAddress(symbol);
 		break;
 	default:
 		assert(false);
@@ -892,6 +913,16 @@ void CCodeGen_Wasm::CommitSymbol(CSymbol* symbol)
 	case SYM_REGISTER128:
 		m_functionStream.Write8(Wasm::INST_LOCAL_SET);
 		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetRegister128Location(symbol));
+		break;
+	case SYM_REGISTER:
+	case SYM_REG_REFERENCE:
+		m_functionStream.Write8(Wasm::INST_LOCAL_SET);
+		CWasmModuleBuilder::WriteULeb128(m_functionStream, GetRegisterLocation(symbol));
+		break;
+	case SYM_REL_REFERENCE:
+		m_functionStream.Write8(Wasm::INST_I32_STORE);
+		m_functionStream.Write8(0x02);
+		m_functionStream.Write8(0x00);
 		break;
 	case SYM_FP_REGISTER32:
 		m_functionStream.Write8(Wasm::INST_LOCAL_SET);
@@ -1161,6 +1192,24 @@ void CCodeGen_Wasm::Emit_RetVal_Tmp(const STATEMENT& statement)
 {
 	auto dst = statement.dst->GetSymbol().get();
 	PullTemporary(dst);
+}
+
+void CCodeGen_Wasm::Emit_RetVal_Reg(const STATEMENT& statement)
+{
+	//The return value is already on the stack, so only register or temporary destinations work.
+	auto dst = statement.dst->GetSymbol().get();
+	CommitSymbol(dst);
+}
+
+void CCodeGen_Wasm::Emit_Mov_RefRef(const STATEMENT& statement)
+{
+	//Used by the register allocator to load and spill references.
+	auto dst = statement.dst->GetSymbol().get();
+	auto src1 = statement.src1->GetSymbol().get();
+
+	PrepareSymbolDef(dst);
+	PrepareSymbolUse(src1);
+	CommitSymbol(dst);
 }
 
 void CCodeGen_Wasm::Emit_ExternJmp(const STATEMENT& statement)

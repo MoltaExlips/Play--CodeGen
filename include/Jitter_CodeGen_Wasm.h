@@ -44,6 +44,12 @@ namespace Jitter
 		{
 			MD_REGISTER_COUNT = 16,
 		};
+
+		//32-bit integer registers (SYM_REGISTER and SYM_REG_REFERENCE), as i32 locals.
+		enum
+		{
+			REGISTER_COUNT = 16,
+		};
 		bool Has128BitsCallOperands() const override;
 		bool CanHold128BitsReturnValueInRegisters() const override;
 		bool SupportsExternalJumps() const override;
@@ -88,6 +94,7 @@ namespace Jitter
 		uint32 GetTemporaryLocation(CSymbol*) const;
 
 		uint32 GetRegister128Location(CSymbol*) const;
+		uint32 GetRegisterLocation(CSymbol*) const;
 
 		uint32 GetFpRegister32Location(CSymbol*) const;
 
@@ -210,6 +217,8 @@ namespace Jitter
 		void Emit_Fp_Clamp_MemMem(const STATEMENT&);
 		void Emit_Fp_ToSingleI32_MemMem(const STATEMENT&);
 		void Emit_Fp_Mov_VarVar(const STATEMENT&);
+		void Emit_RetVal_Reg(const STATEMENT&);
+		void Emit_Mov_RefRef(const STATEMENT&);
 		void Emit_Fp_ToInt32TruncS_MemMem(const STATEMENT&);
 		void Emit_Fp_LdCst_TmpCst(const STATEMENT&);
 		void Emit_Fp_SetRoundingMode_Cst(const STATEMENT&);
